@@ -1,0 +1,185 @@
+---
+title: "Genotyping single cells"
+author: "Matthew Daniel Young"
+date: "`r Sys.Date()`"
+fig_width: 8
+fig_height: 6
+output: 
+  pdf_document: default
+  html_document: default
+vignette: >
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r global_options, include=FALSE}
+library(knitr)
+opts_chunk$set(tidy=TRUE)
+```
+
+# Installation
+
+To get started, you need to install some pre-requisites.  Outside of R you need to install [bcftools](http://samtools.github.io/bcftools/bcftools.html) and [alleleCounter](https://github.com/cancerit/alleleCount).  Assuming you are running on jupyterhub of some description with the farm mounted using `mount-farm` just run this from the terminal
+
+```{bash install, eval=FALSE}
+sudo apt-get install bcftools
+sudo cp /nfs/users/nfs_m/my4/bin/alleleCounter /usr/local/bin/alleleCounter
+sudo chmod +x /usr/local/bin/alleleCounter
+```
+
+and all will be well.  Once that is done, install the latest version of `alleleIntegrator` by running this in R
+
+```{r r_install, eval=FALSE}
+install.packages('/nfs/users/nfs_m/my4/alleleIntegrator_0.7.0.tar.gz',repos=NULL,type='source')
+```
+
+If this fails and complains about some dependency not being met, install it as needed.  On most R installs, the main things missing can be installed with
+```{r install_dep, eval=FALSE}
+BiocManager::install(c('VariantAnnotation','SNPRelate'))
+```
+
+# General workflow
+
+Below we go through some specific examples of how to apply this pipeline to genotype individual cells.  However, as there are a number of ways in which this can be accomplished, it is worthwhile talking about the steps that need to be followed in general terms first  The focus of this vignette is on deciding which of a limited set of possible genotypes is present in each cell.  The genotypes are assumed to be known from some other information that is not the scRNA-seq data.  This would be something like a mosaic developmental disorder or tumour sequencing.  Although genotype can be determined using smaller genomic changes, the focus of this guide is on using copy number changes.
+
+It is assumed that you have:
+ - A list of regions with copy number alterations and what the allele ratio in those regions is (e.g. from karyotyping, or a copy number caller like ASCAT)
+ - Some way of determining the heterozygous SNPs. (e.g. sequencing of normal DNA)
+ - Some way of phasing SNPs within each chromosome (e.g. sequencing of tumour DNA)
+
+As you go through the steps of the process, it is essential that you **do not proceed if one of the checks doesn't look right**.  There's no point getting to the end of the process and finding out that your phasing is all wrong and the results are meaningless.
+
+These are the general steps you need to follow to use `alleleIntegrator` to determine the genotype.
+
+## Step 1 - Identify heterozygous SNPs
+
+This is the easiest step of the process and can potentially be done with no additional information.  You should get some extra information though, because you'll get much better results with more, high quality SNPs.  Ideally you want some whole genome sequencing of normal tissue, although you can make do with a SNP array if you absolutely have no alternative.
+
+If you have whole genome (or exome) sequencing of normal cells, running `findHetSNPs` with default parameters should be sufficient.  In this case it is advisable to further filter out any SNPs with a `QUAL` value less than 225 unless you have a good reason not to.
+
+If you have whole genome sequencing from cells with a mixture of genotypes, you should tweak the parameters to allow for allelic ratios away from 50/50 to identify heterozygous SNPs.  The exact alterations you should use will depend on the fraction of normal cells in the sequenced material and the genotype of the non-normal cells.  See the help for `findHetSNPs` for more details, but usually setting `minDeviation=0.5` should be sufficient in these circumstances.
+
+You can also supply a table of heterozygous SNPs from any other source.  The expectation is that the heterozygous SNPs will be stored as a `GRanges` object with meta data columns: REF, ALT, refCnt, altCnt, total, and BAF.  REF and ALT should give the reference and alternate allele as 'A','C','G', or 'T' as a character string of length 1.  refCnt, altCnt, and total should contain the number of reads supporting the reference, alternate allele, and the total reads.  `BAF = altCnt/total`.
+
+In determining heterozygous SNPs, the thing to keep in mind is that miscalling a homozygous location as heterozygous will hurt the inference more than missing a genuine heterozygous location will help.  As such, there are a series of consistency checks applied throughout the rest of the pipeline to ensure that things that we have called heterozygous really are heterozygous.  Locations that fail these checks will receive the meta data flag `passSanity=FALSE`.  Unless you are desperately short on coverage, it is recommended that you remove any variants flagged in this way.
+
+### Heterozygous SNP sanity checks
+
+If your SNPs have been determined in an unbiased way, the BAF distribution should be reasonably symmetric around 0.5.  There are various subtle biases that will prevent this being exact, but generally you should expect `sum(x$BAF>0.5)/sum(x$BAF!=0.5)` to be in the range 0.45 to 0.55.  If it is not, be sure you understand why or this might indicate a problem in your SNP calling.
+
+Generally speaking, you would expect around 1 heterozygous SNP for every 1-2kb.  So for the human genome, `length(x)/3e6` should be above 0.5 if you haven't missed many SNPs.  If it is above 1, something has likely gone wrong and if it is below 0.1 make sure you understand why.
+
+As mentioned above, further sanity checks that the locations called really are heterozygous are performed with every extra bit of data provided.
+
+## Step 2 - Phase heterozygous SNPs
+
+The next step of the process is to phase SNPs into large blocks (ideally chromosome or chromosome arms).  As with identifying heterozygous SNPs, it does not really matter where you get this information, but there are a number of functions provided for phasing using common sources of adjunct information.  The most common sources of phasing are whole genome sequencing of tumour, or whole genome sequencing of one or both parents.
+
+A note on nomenclature, the R object storing the phased SNPs labels the two alleles as 'maternal' and 'paternal'.  If parental DNA has been supplied these really do represent the maternal and paternal alleles.  In other cases, the maternal allele is arbitrarily designated to be the "main" allele (e.g. the one with most copies present at a copy number change).
+
+### Phasing using copy number
+
+If you have whole genome sequencing from tumour DNA, it is possible to phase together all SNPs that underlie each copy number change that results in an unbalanced number of alleles.  The broad idea is to calculate the alternate allele frequency at all heterozygous SNPs within a copy number segment.  If this frequency is greater than 0.5, then the alternate allele must lie on the allele with the most copies in the tumour.  If the alternate allele frequency in the tumour is less than 0.5, then the reference allele must lie of the allele with the most copies.
+
+This is achieved by passing the heterozygous SNP table to `phaseSNPsFromCN`, along with a definition of the regions of the genome that contain copy number changes.  As with heterozygous SNPs, it's usually better to loose a SNP than to attribute it to the wrong allele.  The defaults are tuned with this in mind and will only allocate a SNP to an allele if it's alternate allele frequency is sufficiently far from 0.5 to exclude the possibility that it is from the less likely allele but generated the observed data due to random chance.  See the help for `phaseSNPsFromCN` for greater detail.
+
+This approach is highly reliable, provided that the sequencing depth is sufficient to clearly separate the SNPs with alternate allele frequency above and below 0.5.  When sequencing coverage is low and/or normal contamination high, it can be difficult to make this assignment with high confidence.  In this case you really don't have much that you can do, other than lower the stringency of the test.  If you are in this situation, consider switching to the expectation maximisation algorithm for allocating SNPs to alleles by setting `useEM=TRUE` when running `phaseSNPsFromCN`.  In this mode, the `FDR` parameter will give you slightly more fine grained control over what gets phased.
+
+At the other extreme, if you have tumour sequencing data with very low normal contamination, the sanity checks will likely be too harsh, particularly in regions of loss of heterozygosity.  That is, the sanity check assumes that there is enough normal contamination that you should see some expression of both alleles, even in regions where one allele is completely lost in the tumour.  It performs a binomial test assuming an error rate (default 1%) and passes only those SNPs where both alleles are observed at a rate greater than would be expected given the error rate.  You can disable this check by setting `errRate=0`.
+
+### Phasing using parental DNA
+
+If DNA sequencing is available for one or both parents, this can be used to phase heterozygous SNPs.  Unlike using tumour data, there is much less need to tune parameters depending on your data.  In almost all circumstances, it should be sufficient to run `phaseSNPsFromParents` with default parameters.  Note that the number of phasable SNPs is lower with this approach, unless you have information from both parents, as for a SNP to be phasable one of the alleles has to be absent from one of the parents.
+
+### Other methods
+
+As with finding heterozygous SNPs, there is no requirement to use one of the above methods for phasing.  If you have some other way of phasing heterozygous SNPs (e.g., long read sequencing), you need only add this information to the heterozygous SNP object generated in Step 1.  To do this, you need to add the following columns to the metadata:
+
+ - `passSanity`, which should be set to `TRUE` if the SNP passes checks, `FALSE` if it does not, and `NA` if the SNP is not phased.
+ - `informative`, which should be set to `TRUE` if the SNP is phased, `FALSE` if not.
+ - `altIsMum`, which should be set to `TRUE` if the ALT allele is maternal (major allele), `FALSE` if the REF allele is maternal.
+ - `matAllele`, which should be set to the base that is the maternal allele (A,C,G, or T), or `NA` if not phased.
+ - `patAllele`, which should be set to the base that is the paternal allele (A,C,G, or T), or `NA` if not phased.
+
+### Phased SNP sanity checks
+
+One key metric for phased SNPs is the fraction of heterozygous SNPs that could be phased, within copy number segments if using copy number, or genome wide if using parental DNA.  The fraction you expect will depend on the purity of the tumour DNA, if both parents DNA is available, and the tuning parameters used for `phaseSNPsFromCN`.  The main value of this metric is giving you a sense of how much of the potential information you will be able to capture.
+
+The second metric to calculate is the number of SNPs that pass sanity checks.  This has to be interpreted with care (see the section of phasing using copy number above), but a high fraction of SNPs failing sanity checks could indicate a problem with your heterozygous SNP calling, or a mismatch between the genomes used to map different samples of DNA.
+
+The final metric that should be paid close attention to is the balance of REF and ALT alleles allocated to the maternal (or major) allele.  This is easily calculated as `sum(phSNPs$altIsMum,na.rm=TRUE)/sum(phSNPs$informative)*100`, and when phasing from tumour data should be very close to 50.  Large deviations are usually indicative of a failure in either heterozygous SNP calling or phasing.  The one exception to this is when phasing using just one parent's DNA, where large deviations are expected.  This is because only those locations that are homozygous in the parent are phasable and these locations are more likely to be homozygous for REF than ALT, because of how the reference genome is constructed. 
+
+**Do not ignore an unbalance REF to ALT ratio.**
+
+## Step 3 - Get and filter single cell data.
+
+### Generating single cell data
+
+Having generated a set of heterozygous SNPs, the number of counts supporting each allele at each location is obtained from the single cell BAM files using `getAllelicExpression`.  If the reference genome for the scRNA-seq data differs from the DNA, make sure you liftOver the phased SNPs using `changeGenomeVersion`.  The fetching of allelic counts from scRNA-seq BAM files uses [alleleCounter](https://github.com/cancerit/alleleCount) to do the fetching.  Depending on the technology platform used to generate the scRNA-seq, the parameters may need to be tweaked.  As a convenience, the `assayType` parameter to `getAllelicExpression` allows you to specify pre-configured parameters for 10X (the default), and SmartSeq2.
+
+In addition to generating allele specific counts, it is advisable to annotate the SNPs with gene annotations.  That is, identify which SNPs are exonic, intronic, inter-genic, in which gene they lie, etc.  If you have, or can get, the [GTF](https://en.wikipedia.org/wiki/Gene_transfer_format) file used in mapping the scRNA-seq data, this can be used to annotate the SNPs using the `annotateSNPs` function.  For example 10X provides the GTF files used in constructing their default references [here](https://support.10xgenomics.com/single-cell-gene-expression/software/downloads/latest).  This step should be done before running `getAllelicExpression` for efficiency.
+
+#### Alternative quantification methods
+
+As always, this data can be provided using an alternative quantification if desired.  The resulting object should be a `GRanges` object, with one entry per cell/SNP combination.  It should have all the same metadata as the phased counts object and the following extra columns:
+
+ - `barcode` - The cellular barcode for this cell.
+ - `A` - Number of counts for A at this cell/SNP.
+ - `C` - Number of counts for C at this cell/SNP.
+ - `G` - Number of counts for G at this cell/SNP.
+ - `T` - Number of counts for T at this cell/SNP.
+ - `Tot` - Number of counts total at this cell/SNP.
+ - `cellID` - The cellular barcode with an experiment specific identified prefix (separated by an `_`) to make it unique.
+ - `altCount` - Number of counts for the ALT allele at this cell/SNP.
+ - `refCount` - Number of counts for the REF allele at this cell/SNP.
+ - `matCount` - Number of counts for the maternal allele at this cell/SNP.
+ - `patCount` - Number of counts for the paternal allele at this cell/SNP.
+ - `regionID` - A unique identifier for this SNP.  Usually chr:pos_REF/ALT with the maternal allele in lower case.  E.g. 2:222232534_t/C is a SNP on chr2 position 222,232,534 with reference base T, alternate C, and the maternal allele is a T.
+
+
+### Filtering counts
+
+You will almost never want to use every count generated by `getAllelicExpression`, and it is advisable to apply a series of filters to ensure that high quality data is fed into the inference steps.  The first filter to consider if you have lots of information is to do a final sanity check that all SNPs appear heterozygous in the scRNA-seq.  To do this, set `minCounts=1` when running `getAllelicExpression` and any SNP that does not have at least 1 count from both alleles will be marked as failing sanity checks.  As scRNA-seq data tends to be very sparse, this is quite a harsh filter to apply, but if you have lots of informative regions and phased SNPs, it can be a useful way to ensure high quality data.
+
+To generate a list of high quality allele specific counts, you should consider using some or all of the following filters.
+
+#### regionType
+
+The error rate in methods that enrich for the 3' or 5' end of transcripts tends to be lowest in exons, moderate in introns, and very high in inter-genic regions.  Usually, roughly 40% of reads fall in exons, 40% in introns, and 10-20% inter-genic.  Therefore, it is a good idea to use only exonic and intronic reads, or even only exonic reads in extreme circumstances.
+
+#### cellID
+
+`getAllelicExpression` will generate counts for every cell barcode in the BAM files provided.  For droplet based methods, most of these barcodes do not represent cells and are of little interest.  It is advisable to filter the count object to keep only counts from barcodes that represent actual cells.
+
+#### passSanity
+
+Any SNP that has failed any of the sanity checks and is marked as `passSanity=FALSE` should be dropped unless you have a good reason to keep it.
+
+#### At least 1 informative read
+
+Some locations will not generate any counts for either the maternal or paternal allele (i.e `matCount + patCount=0`).  These are uninformative and should be dropped.
+
+## Step 4 - Calibrating the model
+
+The point of generating these data was to infer the genotype in each cell.  To do this, several parameters need to be specified or estimated from the data.    While you should always try and accurately estimate these parameters, the most important thing is to understand how the model will respond if they are over/under estimated.    
+
+### Site specific error rate
+
+The first parameter that needs specifying is the expected error rate at SNP.  This is typically set to 1% for exonic regions, 5% for intronic, and 15% for inter-genic (if not excluded).  Assuming the annotation has been added using `annotateSNPs`, this can be done by running
+
+```{r set_err_rate, eval=FALSE}
+gCnts$errRate = c('Exonic'=0.01,'Intronic'=0.05,'Intergenic'=0.15)[gCnts$regionType]
+```
+
+If the error rate is set too low, it will become very difficult for copy number changes to be called.  To appreciate why this is, consider the limit where the error rate is set to 0 and one allele is completely lost in the tumour.  In this case, the probability of seeing even 1 read from the lost allele is always 0, so a single read supporting the lost allele forces the model to rule out the alternate genotype, even if there are 10,000 reads for the retained allele.  On the other hand, if the error rate is set too high the expected counts from a copy number change and normal diploid state become very similar.  This means that even small random fluctuations away from 50/50 can lead the model to conclude that a copy number change is present.  If all else fails, a constant error rate between `0.01` and `0.05` is recommended.
+
+### Exclude imprinted genes
+
+Imprinted genes, that only ever express one allele regardless of the copy number state, contain no information and should be excluded.  These genes can be excluded on the basis of a pre-specified list, and/or estimated from the data (it is advisable to do both).  A list of HGNC gene symbols for genes that should usually always be excluded is included as `stdExGns`.  This includes common imprinted genes and other genes that display complex allele specific behaviour that is hard to model (e.g. HLA genes).
+
+
+
+
+
+
+
