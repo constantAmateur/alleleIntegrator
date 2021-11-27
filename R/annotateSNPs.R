@@ -4,22 +4,31 @@
 #'
 #' @param snps GRanges for each variant.
 #' @param gtf The GTF from which the annotation is to be loaded.
+#' @param autoChr Try and automatically strip/add 'chr' to chromosome names to match gtf and snps.
 #' @return A GRanges
 #' @importFrom stats aggregate
-#' @importFrom GenomicFeatures tidyExons tidyIntrons makeTxDbFromGFF
+#' @importFrom GenomicFeatures tidyExons tidyIntrons makeTxDbFromGFF genes
 #' @importFrom S4Vectors queryHits
 #' @importFrom rtracklayer import
 #' @importFrom utils relist
 #' @export
-annotateSNPs = function(snps,gtf){
+annotateSNPs = function(snps,gtf,autoChr=TRUE){
   #First make a txdb object
   txdb = makeTxDbFromGFF(gtf)
   #Get genes
-  genes = genes(txdb)
+  gns = genes(txdb)
   #Get introns 
   exons = tidyExons(txdb)
   introns = tidyIntrons(txdb)
-  regions = list(Genic=genes,Intronic=introns,Exonic=exons)
+  regions = list(Genic=gns,Intronic=introns,Exonic=exons)
+  #Fix chr if needed
+  if(autoChr & any(grepl('^chr',seqlevels(snps)))!=any(grepl('^chr',seqlevels(gns)))){
+    if(any(grepl('^chr',seqlevels(snps)))){
+      regions = lapply(regions,function(e) renameSeqlevels(e,paste0('chr',seqlevels(e)))) 
+    }else{
+      regions = lapply(regions,function(e) renameSeqlevels(e,gsub('^chr','',seqlevels(e)))) 
+    }
+  }
   #Now annotate things
   snps$regionType = 'InterGenic'
   snps$geneID = as.character(NA) 

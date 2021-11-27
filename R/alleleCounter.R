@@ -16,6 +16,7 @@
 #' @param d Include the -d option?
 #' @param m Allelecounter -m param
 #' @param q Allelecounter -q param
+#' @param autoChr Try to automatically strip or prepend 'chr' to make loci and BAM files match.
 #' @param bin The location of the alleleCounter binary.
 #' @param nParallel Number of processors to use.  Should be a multiple of number of samples.
 #' @param nChunks When running in parallel, split into this many chunks per parallel thread.
@@ -23,7 +24,7 @@
 #' @return A list of GRanges objects, with each entry giving counts of A,C,G,T (and total) at the target loci provided.
 #' @importFrom utils read.table read.delim write.table
 #' @export
-alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TRUE,m=20,q=200,bin='alleleCounter',nParallel=1,nChunks=4,skipIfExists=TRUE){
+alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TRUE,m=20,q=200,autoChr=TRUE,bin='alleleCounter',nParallel=1,nChunks=4,skipIfExists=TRUE){
   if(is.null(outputs))
     warning("output files not specified, so results cannot be reused without recalculation.  These calculations are time consuming, so it is advisable to save them somewhere.")
   #make tgtLoci a list
@@ -40,6 +41,17 @@ alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TR
      !(length(m) %in% c(1,length(bams))) ||
      !(length(q) %in% c(1,length(bams))))
     stop("Length of all parameters must be 1, or match bams length")
+  if(autoChr){
+    #tgtLoci may now become non-unique due to chr matching
+    if(length(tgtLoci)==1)
+      tgtLoci = tgtLoci[rep(1,length(bams))]
+    #Do the bams have chr?
+    bamsHaveChr = sapply(bams,function(e) any(grepl('^chr',seqlevels(BamFile(e)))))
+    lociHaveChr = sapply(tgtLoci,function(e) any(grepl('^chr',seqlevels(e))))
+    needChanging = which(bamsHaveChr!=lociHaveChr)
+  }else{
+    needChanging=integer()
+  }
   #Build a data.frame of inputs
   params = data.frame(callIdx = seq_along(bams),
                       bam = bams,
@@ -60,6 +72,14 @@ alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TR
   for(i in seq_along(tgtLoci)){
     #Get the loci for this BAM
     tmp = data.frame(chr=as.character(seqnames(tgtLoci[[i]])),pos=start(tgtLoci[[i]]))
+    #Add in (or remove) chr as needed
+    if(i %in% needChanging){
+      if(lociHaveChr[i]){
+        tmp$chr = gsub('^chr','',tmp$chr)
+      }else{
+        tmp$chr = paste0('chr',tmp$chr)
+      }
+    }
     #Try and split into nChunksTot parts.  Ensure that each chunk has at least ~1000 loci
     nEff = min(nChunksTot,ceiling(nrow(tmp)/1000))
     splitIdx = seq(nrow(tmp)) %/% (nrow(tmp)/nEff)
@@ -122,6 +142,14 @@ alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TR
       tmp = lapply(tmp$outputs,read.delim,sep='\t')
       tmp = do.call(rbind,tmp)
       colnames(tmp) = if(params$x[i]) ACheadx else AChead
+      #Convert it back if needed
+      if(i %in% needChanging){
+        if(lociHaveChr[i]){
+          tmp$chr = paste0('chr',tmp$chr)
+        }else{
+          tmp$chr = gsub('^chr','',tmp$chr)
+        }
+      }
       #Should we save it?
       if(!is.null(outputs))
         write.table(tmp,outputs[i],sep='\t',row.names=FALSE,col.names=TRUE,quote=FALSE)
