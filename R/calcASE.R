@@ -48,10 +48,14 @@ calcASE = function(gCnts,normalCells,gns=NULL,priorKappa=NULL,overlapMax=TRUE,..
                   postAlpha = 0.5*priorKappa + mCounts,
                   postBeta = 0.5*priorKappa + pCounts)
   #Calculate the maximum posterior probability value
-  dd$matFrac = (dd$postAlpha-1)/(dd$postAlpha+dd$postBeta-2)
+  if(!is.finite(priorKappa)){
+    dd$matFrac = rep(0.5,nrow(dd))
+  }else{
+    dd$matFrac = (dd$postAlpha-1)/(dd$postAlpha+dd$postBeta-2)
+  }
   #Do a check for bias
   tmp = sum(dd$matFrac>0.5)/sum(dd$matFrac!=0.5)
-  if(abs(tmp-0.5)>0.2)
+  if(!is.na(tmp) && abs(tmp-0.5)>0.2)
     warning(sprintf("%d of %d have ASE greater than 0.5.  Your normal cells are probably not normal.  Consider running without normalCells.",sum(dd$matFrac>0.5),nrow(dd)))
   #Set them back into the gCnts object
   o = findOverlaps(gCnts,gnsPlus)

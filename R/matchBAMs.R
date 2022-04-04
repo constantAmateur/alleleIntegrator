@@ -14,6 +14,7 @@
 #' @param usesChr Do any samples have a 'chr' prefix on chromosome names.
 #' @param doPlot Make a plot of the results?
 #' @param colPal Colour scheme to use.  Passed to \code{\link[RColorBrewer]{brewer.pal}}.
+#' @param bamGrouping Group BAMs together based on this vector when plotting.  No grouping if NULL.
 #' @param ... Pass to \code{\link{alleleCounter}}.
 #' @return A list with all the different bits of information.  Probably the main bit you care about is \code{ibs$ibs}
 #' @importFrom SNPRelate snpgdsCreateGeno snpgdsOpen snpgdsLDpruning snpgdsIBS
@@ -23,7 +24,9 @@
 #' @importFrom RColorBrewer brewer.pal
 #' @importFrom circlize colorRamp2
 #' @export
-matchBAMs = function(BAMs,refGenomes,snps=ExAcSNPs,outputs=NULL,liftOvers=NULL,is10X=FALSE,usesChr=FALSE,nParallel=1,doPlot=TRUE,colPal='Greens',...){
+matchBAMs = function(BAMs,refGenomes,snps=ExAcSNPs,outputs=NULL,liftOvers=NULL,is10X=FALSE,usesChr=FALSE,nParallel=1,doPlot=TRUE,colPal='Greens',bamGrouping=NULL,...){
+  if(!is.null(bamGrouping) && length(bamGrouping)!=length(BAMs))
+    stop("Length of bamGrouping must match BAMs")
   if(is.null(names(BAMs)))
     names(BAMs) = paste0('BAM_number',seq_along(BAMs))
   w = which(names(BAMs)=='')
@@ -186,7 +189,10 @@ matchBAMs = function(BAMs,refGenomes,snps=ExAcSNPs,outputs=NULL,liftOvers=NULL,i
                  show_row_names=TRUE,
                  show_column_names=TRUE,
                  show_row_dend=FALSE,
-                 show_column_dend=FALSE
+                 show_column_dend=FALSE,
+                 row_title_rot=0,
+                 column_split = bamGrouping,
+                 row_split = bamGrouping
                  )
     draw(hm)
   }

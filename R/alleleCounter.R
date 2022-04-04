@@ -6,6 +6,10 @@
 #'
 #' The default alleleCounter parameters are tuned for 10X output.
 #'
+#' Note that there are two levels of possible parallel execution.  Firstly, when multiple BAM files are specified, they can be processed simultaneously.  Secondly, the loci can be split into groups (e.g. by chromosome) and each group can be processed simultaneously.  Rather than split by chromosome, which will result in very uneven numbers of loci in each group, this function instead splits the input loci up into \code{nChunks} roughly equally sized groups.  Note increasing \code{nChunks} may actually compromise perfomance by creating too many threads trying to read from the same file at once.
+#'
+#' The parallel execution is further controlled by the \code{nMaxSim} parameter.  When processing a large number of BAM files simultaneously, this parameter will split them up into groups of size \code{nMaxSim} or smaller.  The purpose of this is so that the output is progressively written across the course of a job rather than in one big lump at the end.  As such, this parameter is ignored with \code{outputs} is set to NULL.
+#'
 #' @param bams The BAM files to get allele counts from. 
 #' @param refGenome The reference genome each BAM file was mapped using.
 #' @param tgtLoci Locations to interogate as a GRanges object.  Either one per sample or if length 1 the same loci are used for all samples.
@@ -19,12 +23,14 @@
 #' @param autoChr Try to automatically strip or prepend 'chr' to make loci and BAM files match.
 #' @param bin The location of the alleleCounter binary.
 #' @param nParallel Number of processors to use.  Should be a multiple of number of samples.
-#' @param nChunks When running in parallel, split into this many chunks per parallel thread.
+#' @param nChunks When running in parallel, split into this many chunks.  Set this to roughly the number of threads that can simultaneously read a file.
+#' @param nMaxSim Don't do more than too many samples simultaneously.  This prevents computation being wasted if a big job fails at the end.
 #' @param skipIfExists If \code{outputs} already exists.  Load results from there instead of calculating from scratch.
+#' @param ignoreOutputs Suppress printing of outputs from alleleCounter binary.
 #' @return A list of GRanges objects, with each entry giving counts of A,C,G,T (and total) at the target loci provided.
 #' @importFrom utils read.table read.delim write.table
 #' @export
-alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TRUE,m=20,q=200,autoChr=TRUE,bin='alleleCounter',nParallel=1,nChunks=4,skipIfExists=TRUE){
+alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TRUE,m=20,q=200,autoChr=TRUE,bin='alleleCounter',nParallel=1,nChunks=8,nMaxSim=6,skipIfExists=TRUE,ignoreOutputs=TRUE){
   if(is.null(outputs))
     warning("output files not specified, so results cannot be reused without recalculation.  These calculations are time consuming, so it is advisable to save them somewhere.")
   #make tgtLoci a list
@@ -41,6 +47,32 @@ alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TR
      !(length(m) %in% c(1,length(bams))) ||
      !(length(q) %in% c(1,length(bams))))
     stop("Length of all parameters must be 1, or match bams length")
+  #Don't do a huge number of files at the same time.  This prevents having to redo large calculations on failure of the final files.
+  #There's no point in this if we're not saving the outputs
+  if(!is.null(outputs) && length(bams)>nMaxSim){
+    out = list()
+    #Loop over groups
+    for(w in split(seq_along(bams),(seq_along(bams)-1) %/% nMaxSim)){
+      out = c(out,alleleCounter(bams=bams[w],
+                                refGenome = if(length(refGenome)==1){refGenome}else{refGenome[w]},
+                                tgtLoci = if(length(tgtLoci)==1){tgtLoci}else{tgtLoci[w]},
+                                outputs = outputs[w],
+                                f = if(length(f)==1){f}else{f[w]},
+                                F = if(length(F)==1){F}else{F[w]},
+                                x = if(length(x)==1){x}else{x[w]},
+                                d = if(length(d)==1){d}else{d[w]},
+                                m = if(length(m)==1){m}else{m[w]},
+                                q = if(length(q)==1){q}else{q[w]},
+                                autoChr=autoChr,
+                                bin=bin,
+                                nParallel=nParallel,
+                                nChunks=nChunks,
+                                nMaxSim=nMaxSim,
+                                skipIfExists=skipIfExists
+                                ))
+    }
+    return(out)
+  }
   if(autoChr){
     #tgtLoci may now become non-unique due to chr matching
     if(length(tgtLoci)==1)
@@ -65,8 +97,8 @@ alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TR
                       q=q)
   #Construct the base string
   baseCommand = paste0(bin, ' -l %s -b %s -o %s -r %s -f %d -F %d -m %d -q %d') 
-  #Make this more parallelisable by chopping into nParallel * x pieces, such that each piece isn't too small.
-  nChunksTot = ifelse(nParallel==1,1,nParallel*nChunks)
+  #Make this more parallelisable by chopping into nParallel * x pieces, such that each piece isn't too large
+  nChunksTot = ifelse(nParallel==1,1,nChunks)
   #Split loci into chromosomes and save
   lociPaths = list()
   for(i in seq_along(tgtLoci)){
@@ -122,7 +154,7 @@ alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TR
     rFile = tempfile()
     write.table(toRun$cmd,rFile,row.names=FALSE,col.names=FALSE,quote=FALSE)
     #Actually run things
-    system(sprintf("parallel -j %d < %s",nParallel,rFile))
+    system(sprintf("parallel -j %d < %s",nParallel,rFile),ignore.stderr=ignoreOutputs,ignore.stdout=ignoreOutputs)
   }
   #Load everything
   AChead = c('chr','pos','A','C','G','T','Tot')

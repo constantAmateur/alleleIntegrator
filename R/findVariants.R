@@ -2,7 +2,7 @@
 #'
 #' Find any base with decent coverage and BAF within a range and save them a VCF. If an output filename is given via \code{outVCF}, an earlier result will be loaded if it exists.
 #'
-#' This is mostly just a wrapper around external calls to bcftools, which obviously need to be installed for this to work.
+#' This is mostly just a wrapper around external calls to bcftools, which obviously need to be installed for this to work.  Parallel execution splits the genome into \code{nChunks} pieces.
 #'
 #' @param bam Path to BAM file to call variants from.
 #' @param refGenome Path to reference genome used to map BAM.
@@ -16,7 +16,7 @@
 #' @param bin Path to BCF tools binary.
 #' @param skipIfExists Skip running the SNP caller if the VCF already exists.
 #' @param nParallel How many threads to use.  Note that the final variants called depends (very mildly) on the genomic chunks processed together.  As such, it is not advisable to set this much larger than the number of chromosomes.
-#' @param nChunks When running in parallel, split into this many chunks per parallel thread.
+#' @param nChunks When running in parallel, split the genome into this many chunks.
 #' @param ... Absorb unused parameters.
 #' @return A GRanges object containing all variants matching specified parameters.
 #' @import GenomicRanges
@@ -26,7 +26,7 @@
 #' @importFrom DelayedArray rowRanges
 #' @importFrom utils write.table
 #' @export
-findVariants = function(bam,refGenome,minCoverage,BAF_lim,outVCF=NULL,chrsToProcess=c('X',1:22),minMapQual=35,minBaseQual=20,minVarQual=225,bin='bcftools',skipIfExists=TRUE,nParallel=1,nChunks=1,...){
+findVariants = function(bam,refGenome,minCoverage,BAF_lim,outVCF=NULL,chrsToProcess=c('X',1:22),minMapQual=35,minBaseQual=20,minVarQual=225,bin='bcftools',skipIfExists=TRUE,nParallel=1,nChunks=24,...){
   if(is.null(outVCF))
     warning("output file not specified, so results cannot be reused without recalculation.  These calculations are time consuming, so it is advisable to save them somewhere.")
   #Check BAF_lim set sensibly
@@ -53,7 +53,7 @@ findVariants = function(bam,refGenome,minCoverage,BAF_lim,outVCF=NULL,chrsToProc
   #Break it up into pieces
   chrLens = as.data.frame(chrLens[chrs])
   chrLens$cumLen = cumsum(as.numeric(chrLens$seqlengths))
-  nChunksTot = ifelse(nParallel==1,1,nParallel*nChunks)
+  nChunksTot = ifelse(nParallel==1,1,nChunks)
   breaks = seq(0,max(chrLens$cumLen),length.out=nChunksTot+1)
   #Construct GRanges for each
   chunks = lapply(seq(nChunksTot),function(e) {

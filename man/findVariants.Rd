@@ -17,7 +17,7 @@ findVariants(
   bin = "bcftools",
   skipIfExists = TRUE,
   nParallel = 1,
-  nChunks = 1,
+  nChunks = 24,
   ...
 )
 }
@@ -46,7 +46,7 @@ findVariants(
 
 \item{nParallel}{How many threads to use.  Note that the final variants called depends (very mildly) on the genomic chunks processed together.  As such, it is not advisable to set this much larger than the number of chromosomes.}
 
-\item{nChunks}{When running in parallel, split into this many chunks per parallel thread.}
+\item{nChunks}{When running in parallel, split the genome into this many chunks.}
 
 \item{...}{Absorb unused parameters.}
 }
@@ -57,5 +57,5 @@ A GRanges object containing all variants matching specified parameters.
 Find any base with decent coverage and BAF within a range and save them a VCF. If an output filename is given via \code{outVCF}, an earlier result will be loaded if it exists.
 }
 \details{
-This is mostly just a wrapper around external calls to bcftools, which obviously need to be installed for this to work.
+This is mostly just a wrapper around external calls to bcftools, which obviously need to be installed for this to work.  Parallel execution splits the genome into \code{nChunks} pieces.
 }

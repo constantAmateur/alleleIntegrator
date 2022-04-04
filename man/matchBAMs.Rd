@@ -15,6 +15,7 @@ matchBAMs(
   nParallel = 1,
   doPlot = TRUE,
   colPal = "Greens",
+  bamGrouping = NULL,
   ...
 )
 }
@@ -38,6 +39,8 @@ matchBAMs(
 \item{doPlot}{Make a plot of the results?}
 
 \item{colPal}{Colour scheme to use.  Passed to \code{\link[RColorBrewer]{brewer.pal}}.}
+
+\item{bamGrouping}{Group BAMs together based on this vector when plotting.  No grouping if NULL.}
 
 \item{...}{Pass to \code{\link{alleleCounter}}.}
 }
