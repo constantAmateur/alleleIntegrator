@@ -4,12 +4,14 @@
 \alias{annotateSNPs}
 \title{Adds annotation to Variants}
 \usage{
-annotateSNPs(snps, gtf)
+annotateSNPs(snps, gtf, autoChr = TRUE)
 }
 \arguments{
 \item{snps}{GRanges for each variant.}
 
 \item{gtf}{The GTF from which the annotation is to be loaded.}
+
+\item{autoChr}{Try and automatically strip/add 'chr' to chromosome names to match gtf and snps.}
 }
 \value{
 A GRanges

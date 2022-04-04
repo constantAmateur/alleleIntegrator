@@ -95,14 +95,14 @@ getAllelicExpression = function(loci,refGenome,bams,labels=names(bams),outputs=N
   names(out) = out$regionID
   #Do the sanity check filter
   if(minCounts>0){
-    tmp = buildCountMatricies(out)
-    failIDs = rownames(tmp$matCount)[rowSums(tmp$matCount)<minCounts | rowSums(tmp$patCount)<minCounts]
+    tmp = buildCountMatricies(out,assays=c('refCount','altCount'))
+    failIDs = rownames(tmp$refCount)[rowSums(tmp$refCount)<minCounts | rowSums(tmp$altCount)<minCounts]
     if(length(failIDs)>0)
       out$passSanity[which(out$regionID %in% failIDs)]=FALSE
   }
   #Summary stats about fit
-  #Do summary stats by segment?
-  if(length(segs)>0){
+  #Do summary stats by segment?  Need mat/pat columns if so
+  if(length(segs)>0 && !all(is.na(out$matCount)) && !all(is.na(out$patCount))){
     for(i in seq(0,length(segs))){
       if(i==0){
         src = loci

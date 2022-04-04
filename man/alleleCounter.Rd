@@ -15,10 +15,13 @@ alleleCounter(
   d = TRUE,
   m = 20,
   q = 200,
+  autoChr = TRUE,
   bin = "alleleCounter",
   nParallel = 1,
-  nChunks = 4,
-  skipIfExists = TRUE
+  nChunks = 8,
+  nMaxSim = 6,
+  skipIfExists = TRUE,
+  ignoreOutputs = TRUE
 )
 }
 \arguments{
@@ -42,13 +45,19 @@ alleleCounter(
 
 \item{q}{Allelecounter -q param}
 
+\item{autoChr}{Try to automatically strip or prepend 'chr' to make loci and BAM files match.}
+
 \item{bin}{The location of the alleleCounter binary.}
 
 \item{nParallel}{Number of processors to use.  Should be a multiple of number of samples.}
 
-\item{nChunks}{When running in parallel, split into this many chunks per parallel thread.}
+\item{nChunks}{When running in parallel, split into this many chunks.  Set this to roughly the number of threads that can simultaneously read a file.}
+
+\item{nMaxSim}{Don't do more than too many samples simultaneously.  This prevents computation being wasted if a big job fails at the end.}
 
 \item{skipIfExists}{If \code{outputs} already exists.  Load results from there instead of calculating from scratch.}
+
+\item{ignoreOutputs}{Suppress printing of outputs from alleleCounter binary.}
 }
 \value{
 A list of GRanges objects, with each entry giving counts of A,C,G,T (and total) at the target loci provided.
@@ -60,4 +69,8 @@ Calculates the pileup using alleleCounter binary for a set of BAM files and targ
 If \code{outputs} is specified, the results will be saved to a file and reused instead of re-running alleleCounter if called again.
 
 The default alleleCounter parameters are tuned for 10X output.
+
+Note that there are two levels of possible parallel execution.  Firstly, when multiple BAM files are specified, they can be processed simultaneously.  Secondly, the loci can be split into groups (e.g. by chromosome) and each group can be processed simultaneously.  Rather than split by chromosome, which will result in very uneven numbers of loci in each group, this function instead splits the input loci up into \code{nChunks} roughly equally sized groups.  Note increasing \code{nChunks} may actually compromise perfomance by creating too many threads trying to read from the same file at once.
+
+The parallel execution is further controlled by the \code{nMaxSim} parameter.  When processing a large number of BAM files simultaneously, this parameter will split them up into groups of size \code{nMaxSim} or smaller.  The purpose of this is so that the output is progressively written across the course of a job rather than in one big lump at the end.  As such, this parameter is ignored with \code{outputs} is set to NULL.
 }
