@@ -81,9 +81,9 @@ phaseSNPsFromParents = function(hSNPs,refGenome,mBAM=NULL,pBAM=NULL,outBase=NULL
         tmp[noRef[ww]] = c(TRUE,FALSE)[i]
         tmp[noAlt[ww]] = c(FALSE,TRUE)[i]
         #Now check for consistency and NA those that are inconsistent (others already set)
-        www = ww[tmp!=altIsMum[ww]]
-        sanityFail[ww]=TRUE
-        altIsMum[ww] = NA
+        www = ww[which(tmp!=altIsMum[ww])]
+        sanityFail[www]=TRUE
+        altIsMum[www] = NA
       }
       #Now set those not already set
       altIsMum[which(w & noRef)] = c(TRUE,FALSE)[i]

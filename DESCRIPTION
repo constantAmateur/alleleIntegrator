@@ -1,7 +1,7 @@
 Package: alleleIntegrator
 Title: Identify and integrate alleles from various sources
-Version: 0.8.8
-Date: 2022-04-04
+Version: 0.8.9
+Date: 2022-06-10
 Author: Matthew Daniel Young
 Maintainer: Matthew Daniel Young <my4@sanger.ac.uk>
 Description: Identify alleles in DNA and RNA data and compare them.
