@@ -14,9 +14,12 @@
 #' @param minBaseQual Minimum base quality to pass to -Q flag of bcftools mpileup.
 #' @param minVarQual Filter variants with quality scores below this value.
 #' @param bin Path to BCF tools binary.
+#' @param binPar Path to parallel binary.
 #' @param skipIfExists Skip running the SNP caller if the VCF already exists.
 #' @param nParallel How many threads to use.  Note that the final variants called depends (very mildly) on the genomic chunks processed together.  As such, it is not advisable to set this much larger than the number of chromosomes.
 #' @param nChunks When running in parallel, split the genome into this many chunks.
+#' @param ignoreOutputs Suppress printing of outputs from alleleCounter binary.
+#' @param debug Enable debugging mode?  If enable temporary files are not deleted.
 #' @param ... Absorb unused parameters.
 #' @return A GRanges object containing all variants matching specified parameters.
 #' @import GenomicRanges
@@ -26,7 +29,7 @@
 #' @importFrom DelayedArray rowRanges
 #' @importFrom utils write.table
 #' @export
-findVariants = function(bam,refGenome,minCoverage,BAF_lim,outVCF=NULL,chrsToProcess=c('X',1:22),minMapQual=35,minBaseQual=20,minVarQual=225,bin='bcftools',skipIfExists=TRUE,nParallel=1,nChunks=24,...){
+findVariants = function(bam,refGenome,minCoverage,BAF_lim,outVCF=NULL,chrsToProcess=c('X',1:22),minMapQual=35,minBaseQual=20,minVarQual=225,bin=.bcfBin,binPar=.parBin,skipIfExists=TRUE,nParallel=1,nChunks=24,ignoreOutputs=!debug,debug=FALSE,...){
   if(is.null(outVCF))
     warning("output file not specified, so results cannot be reused without recalculation.  These calculations are time consuming, so it is advisable to save them somewhere.")
   #Check BAF_lim set sensibly
@@ -85,18 +88,30 @@ findVariants = function(bam,refGenome,minCoverage,BAF_lim,outVCF=NULL,chrsToProc
     #Actually run things
     rFile = tempfile()
     write.table(cmds,rFile,row.names=FALSE,col.names=FALSE,quote=FALSE)
+    if(debug)
+      message(sprintf('DEBUG: commands to run in %s',rFile))
     #Actually run things
-    system(sprintf("parallel -j %d < %s",nParallel,rFile))
+    if(nParallel>1 && !is.null(binPar)){
+      system(sprintf("%s -j %d < %s",binPar,nParallel,rFile),ignore.stderr=ignoreOutputs,ignore.stdout=ignoreOutputs)
+    }else{
+      if(nParallel>1)
+        warning("parallel binary not available, forcing single threaded execution")
+      system(sprintf("bash %s",rFile),ignore.stderr=ignoreOutputs,ignore.stdout=ignoreOutputs)
+    }
     #All done, concatenate to local home.
     output = tempfile()
-    system(sprintf('%s concat -o %s %s',bin,output,paste(tFiles,collapse = ' ')))
+    system(sprintf('%s concat -o %s %s',bin,output,paste(tFiles,collapse = ' ')),ignore.stderr=ignoreOutputs,ignore.stdout=ignoreOutputs)
     #Move to final home if this exists
     if(!is.null(outVCF))
       file.copy(output,outVCF,overwrite=TRUE)
     #Read it in
     tmp = readVcf(outVCF)
     #Cleanup
-    unlink(c(tFiles,rFile,output))
+    if(debug){
+      message(sprintf('DEBUG: output is in %s',output))
+    }else{
+      unlink(c(tFiles,rFile,output))
+    }
   }else{
     #Just read it in
     tmp = readVcf(outVCF)

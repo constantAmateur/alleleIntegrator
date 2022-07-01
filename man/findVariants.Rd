@@ -14,10 +14,13 @@ findVariants(
   minMapQual = 35,
   minBaseQual = 20,
   minVarQual = 225,
-  bin = "bcftools",
+  bin = .bcfBin,
+  binPar = .parBin,
   skipIfExists = TRUE,
   nParallel = 1,
   nChunks = 24,
+  ignoreOutputs = !debug,
+  debug = FALSE,
   ...
 )
 }
@@ -42,11 +45,17 @@ findVariants(
 
 \item{bin}{Path to BCF tools binary.}
 
+\item{binPar}{Path to parallel binary.}
+
 \item{skipIfExists}{Skip running the SNP caller if the VCF already exists.}
 
 \item{nParallel}{How many threads to use.  Note that the final variants called depends (very mildly) on the genomic chunks processed together.  As such, it is not advisable to set this much larger than the number of chromosomes.}
 
 \item{nChunks}{When running in parallel, split the genome into this many chunks.}
+
+\item{ignoreOutputs}{Suppress printing of outputs from alleleCounter binary.}
+
+\item{debug}{Enable debugging mode?  If enable temporary files are not deleted.}
 
 \item{...}{Absorb unused parameters.}
 }

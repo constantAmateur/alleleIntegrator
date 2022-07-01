@@ -10,15 +10,32 @@ The R package should be installable in the usual way with `devtools`
 devtools::install_github('constantAmateur/alleleIntegrator')
 ```
 
+Most of `alleleIntegrator` won't work without also installing some external dependencies (see below).
+
 ## Dependencies
 
-alleleIntegrator depends on a few external tools that need to be installed for it to function fully.
+You can satisfy the external dependencies of `alleleIntegrator` the easy way, or the hard way.
 
-[alleleCount](https://github.com/cancerit/alleleCount) - Used to count reads supporting genotype in DNA and RNA bam files.  There is a pre-compiled binary in `inst/bin` that should work on ubuntu, otherwise compile using instructions in the alleleCount repository.
+### Singularity: The easy way
 
-bcftools - Used to call variants in DNA bam files.  On ubuntu run `sudo apt install bcftools`.
+If you are running on a machine where [singularity](https://docs.sylabs.io/guides/3.5/user-guide/introduction.html) is installed, the main dependencies (alleleCount and bcftools) will automatically be satisfied.  You shouldn't need to do anything.  Although you should consider installing the optional dependencies.
 
-[ASCAT](https://github.com/VanLoo-lab/ascat) used for calling copy number state from whole genome sequencing.  Pretty much all of alleleIntegrator will work without this.  Install with `devtools::install_github('VanLoo-lab/ascat/ASCAT')`
+### Manual installation: The hard way
+
+If singularity is not installed and you cannot install it, you will need to make sure each of the required binaries is available.  The main binaries are:
+
+ * [alleleCount](https://github.com/cancerit/alleleCount) Needed for almost everything.  Gets counts of A,C,G, and T at specified locations in BAM files.
+ * [bcftools](https://samtools.github.io/bcftools/bcftools.html) Needed to call hetSNPs or similar.
+
+`bcftools` can be installed using `apt install bcftools` or `brew install bcftools`.  Installing `alleleCount` is more involved, and you should follow the documentation [here](https://github.com/cancerit/alleleCount).
+
+### Optional dependencies
+
+In addition to the two main external dependencies, alleleCount and bcftools, `alleleIntegrator` can be enhanced by installing the following:
+
+ * [parallel](https://www.gnu.org/software/parallel/) Without this, only one core will be used at a time.  Available by default on most systems, but install with `apt install parallel` or `brew install parallel`
+ * [ASCAT](https://github.com/VanLoo-lab/ascat) - Used only in `generateCoverageAndBAF`, and is optional even then, to define copy number changes.  Install with `devtools::install_github('VanLoo-lab/ascat/ASCAT')`
+
 
 ## Usage
 

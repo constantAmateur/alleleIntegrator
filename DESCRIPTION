@@ -1,14 +1,19 @@
 Package: alleleIntegrator
 Title: Identify and integrate alleles from various sources
-Version: 0.8.9
-Date: 2022-06-10
+Version: 0.9.0
+Date: 2022-06-29
 Author: Matthew Daniel Young
 Maintainer: Matthew Daniel Young <my4@sanger.ac.uk>
 Description: Identify alleles in DNA and RNA data and compare them.
 Suggests: ASCAT
-Imports: Matrix, Matrix.utils, DelayedArray, Rsamtools, VariantAnnotation, rtracklayer, methods, GenomicFeatures, GenomeInfoDb, S4Vectors, VGAM, IRanges, circlize, ComplexHeatmap, RColorBrewer, SNPRelate, ggplot2
+Imports: Matrix, Matrix.utils, DelayedArray, Rsamtools,
+        VariantAnnotation, rtracklayer, methods, GenomicFeatures,
+        GenomeInfoDb, S4Vectors, VGAM, IRanges, circlize,
+        ComplexHeatmap, RColorBrewer, SNPRelate, ggplot2, pkgload
 Depends: R (>= 3.5.0), GenomicRanges
 LazyData: true
-License: GPL-2
+License: GPL-3 + file LICENSE
 Encoding: UTF-8
 RoxygenNote: 7.1.1
+NeedsCompilation: no
+Packaged: 2022-06-30 09:32:20 UTC; my4

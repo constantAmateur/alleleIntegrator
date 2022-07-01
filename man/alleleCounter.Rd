@@ -16,12 +16,14 @@ alleleCounter(
   m = 20,
   q = 200,
   autoChr = TRUE,
-  bin = "alleleCounter",
+  bin = .acBin,
+  binPar = .parBin,
   nParallel = 1,
   nChunks = 8,
   nMaxSim = 6,
   skipIfExists = TRUE,
-  ignoreOutputs = TRUE
+  ignoreOutputs = !debug,
+  debug = FALSE
 )
 }
 \arguments{
@@ -49,6 +51,8 @@ alleleCounter(
 
 \item{bin}{The location of the alleleCounter binary.}
 
+\item{binPar}{The location of the parallel binary.}
+
 \item{nParallel}{Number of processors to use.  Should be a multiple of number of samples.}
 
 \item{nChunks}{When running in parallel, split into this many chunks.  Set this to roughly the number of threads that can simultaneously read a file.}
@@ -58,6 +62,8 @@ alleleCounter(
 \item{skipIfExists}{If \code{outputs} already exists.  Load results from there instead of calculating from scratch.}
 
 \item{ignoreOutputs}{Suppress printing of outputs from alleleCounter binary.}
+
+\item{debug}{Enable debugging mode?  If enable temporary files are not deleted.}
 }
 \value{
 A list of GRanges objects, with each entry giving counts of A,C,G,T (and total) at the target loci provided.

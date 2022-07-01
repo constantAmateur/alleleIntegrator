@@ -22,15 +22,19 @@
 #' @param q Allelecounter -q param
 #' @param autoChr Try to automatically strip or prepend 'chr' to make loci and BAM files match.
 #' @param bin The location of the alleleCounter binary.
+#' @param binPar The location of the parallel binary.
 #' @param nParallel Number of processors to use.  Should be a multiple of number of samples.
 #' @param nChunks When running in parallel, split into this many chunks.  Set this to roughly the number of threads that can simultaneously read a file.
 #' @param nMaxSim Don't do more than too many samples simultaneously.  This prevents computation being wasted if a big job fails at the end.
 #' @param skipIfExists If \code{outputs} already exists.  Load results from there instead of calculating from scratch.
 #' @param ignoreOutputs Suppress printing of outputs from alleleCounter binary.
+#' @param debug Enable debugging mode?  If enable temporary files are not deleted.
 #' @return A list of GRanges objects, with each entry giving counts of A,C,G,T (and total) at the target loci provided.
 #' @importFrom utils read.table read.delim write.table
 #' @export
-alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TRUE,m=20,q=200,autoChr=TRUE,bin='alleleCounter',nParallel=1,nChunks=8,nMaxSim=6,skipIfExists=TRUE,ignoreOutputs=TRUE){
+alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TRUE,m=20,q=200,autoChr=TRUE,bin=.acBin,binPar=.parBin,nParallel=1,nChunks=8,nMaxSim=6,skipIfExists=TRUE,ignoreOutputs=!debug,debug=FALSE){
+  if(debug)
+    message("DEBUG: debugging is enabled")
   if(is.null(outputs))
     warning("output files not specified, so results cannot be reused without recalculation.  These calculations are time consuming, so it is advisable to save them somewhere.")
   #make tgtLoci a list
@@ -52,7 +56,10 @@ alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TR
   if(!is.null(outputs) && length(bams)>nMaxSim){
     out = list()
     #Loop over groups
+    cntr=1
     for(w in split(seq_along(bams),(seq_along(bams)-1) %/% nMaxSim)){
+      if(debug)
+        message(sprintf("DEBUG: Launching recursive split number %d",cntr)) 
       out = c(out,alleleCounter(bams=bams[w],
                                 refGenome = if(length(refGenome)==1){refGenome}else{refGenome[w]},
                                 tgtLoci = if(length(tgtLoci)==1){tgtLoci}else{tgtLoci[w]},
@@ -65,11 +72,15 @@ alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TR
                                 q = if(length(q)==1){q}else{q[w]},
                                 autoChr=autoChr,
                                 bin=bin,
+				binPar=binPar,
                                 nParallel=nParallel,
                                 nChunks=nChunks,
                                 nMaxSim=nMaxSim,
-                                skipIfExists=skipIfExists
+                                skipIfExists=skipIfExists,
+				ignoreOutputs=ignoreOutputs,
+				debug=debug
                                 ))
+      cntr = cntr +1
     }
     return(out)
   }
@@ -145,6 +156,7 @@ alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TR
     dd$m = params$m[i]
     dd$q = params$q[i]
     dd$cmd = sprintf(baseCommand,dd$tFile,dd$bam,dd$outputs,dd$refGenome,dd$f,dd$F,dd$m,dd$q)
+    #And modifiers at the end as needed
     dd$cmd = paste0(dd$cmd,ifelse(dd$x,' -x',''),ifelse(dd$d,' -d',''))
     toRun[[length(toRun)+1]] = dd
   }
@@ -153,8 +165,19 @@ alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TR
     #Write and run in parallel
     rFile = tempfile()
     write.table(toRun$cmd,rFile,row.names=FALSE,col.names=FALSE,quote=FALSE)
+    if(debug){
+      dFile = tempfile()
+      write.table(toRun,dFile,row.names=FALSE,col.names=FALSE,quote=FALSE)
+      message(sprintf("DEBUG: command table is at %s, commands to run at %s",dFile,rFile))
+    }
     #Actually run things
-    system(sprintf("parallel -j %d < %s",nParallel,rFile),ignore.stderr=ignoreOutputs,ignore.stdout=ignoreOutputs)
+    if(nParallel>1 && !is.null(binPar)){
+      system(sprintf("%s -j %d < %s",binPar,nParallel,rFile),ignore.stderr=ignoreOutputs,ignore.stdout=ignoreOutputs)
+    }else{
+      if(nParallel>1)
+        warning("parallel binary not available, forcing single threaded execution")
+      system(sprintf("bash %s",rFile),ignore.stderr=ignoreOutputs,ignore.stdout=ignoreOutputs)
+    }
   }
   #Load everything
   AChead = c('chr','pos','A','C','G','T','Tot')
@@ -219,12 +242,14 @@ alleleCounter = function(bams,refGenome,tgtLoci,outputs=NULL,f=0,F=0,x=TRUE,d=TR
     outs[[i]] = out
   }
   #Cleanup
-  if(length(toRun)>0){
-    unlink(toRun$inputs)
-    unlink(rFile)
-  }
-  for(tmp in lociPaths){
-    unlink(tmp$tFile)
+  if(!debug){
+    if(length(toRun)>0){
+      unlink(toRun$inputs)
+      unlink(rFile)
+    }
+    for(tmp in lociPaths){
+      unlink(tmp$tFile)
+    }
   }
   if(weFailed)
     stop("Not all output loaded successfully.")

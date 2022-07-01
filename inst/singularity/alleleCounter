@@ -1,0 +1,34 @@
+#!/bin/bash
+#Parsing needed to make aiBox behave as if it were the native alleleCounter binary.  Assumes that it is being called from alleleIntegrator::alleleCounter with associated syntax and file paths.
+#Where is the singularity build found?
+dir="$(dirname $(readlink -f ${BASH_SOURCE[0]}))"
+cmd=$(basename "$0")
+boxPath=${dir}/aiBox.sif
+#Extract bam param and pick a dummy location for it in /tmp if it's the full command
+if grep -q ".\+ -b .\+ -o .\+ -r .\+ -f" <<< "$@"
+then
+  binds="--bind "
+  b=`echo "$@"|sed 's/.*-b \(.*\) -o.*/\1/g'`
+  bbind=`tempfile`
+  binds="${binds}$(realpath ${b}):${bbind}"
+  #Bind in index file if it exists (you'll be in trouble if it doesn't....)
+  if [ -n "${b}.bai" ]
+  then
+    binds="${binds},$(realpath ${b}.bai):${bbind}.bai"
+  fi
+  #Same but for the reference genome
+  r=`echo "$@"|sed 's/.*-r \(.*\) -f.*/\1/g'`
+  rbind=`tempfile`
+  binds="${binds},$(realpath ${r}):${rbind}"
+  #Bind genome reference index if exists
+  if [ -n "${r}.fai" ]
+  then
+    binds="${binds},$(realpath ${r}.fai):${rbind}.fai"
+  fi
+  #Do all the substituting of parameters to construct the call as seen by aiBox
+  out=`echo "$@"|sed 's,\(.*-b \)\(.*\)\( -o.*\),\1'"${bbind}"'\3,g'|sed 's,\(.*-r \)\(.*\)\( -f.*\),\1'"${rbind}"'\3,g'`
+  singularity exec $binds ${boxPath} ${cmd} ${out}
+else
+  #"$@" is special and needs to be used directly...
+  singularity exec ${boxPath} ${cmd} "$@"
+fi

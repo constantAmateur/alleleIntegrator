@@ -1,0 +1,53 @@
+Bootstrap: docker
+From: ubuntu
+
+%post -c /bin/bash
+    apt-get update
+    apt-get install -yq --no-install-recommends bcftools
+    apt-get install -yq --no-install-recommends samtools
+    apt-get install -yq --no-install-recommends git
+    # ALL tool versions used by opt-build.sh
+    # need to keep in sync with setup.sh
+    export VER_HTSLIB="1.11"
+    export VER_LIBDEFLATE="v1.6"
+    apt-get -yq update
+    apt-get install -yq --no-install-recommends
+    #My three additions
+    apt-get install -yq --no-install-recommends bcftools
+    apt-get install -yq --no-install-recommends samtools
+    apt-get install -yq --no-install-recommends git
+    #All the alleleCount crap
+    apt-get install -yq --no-install-recommends build-essential
+    apt-get install -yq --no-install-recommends apt-transport-https
+    apt-get install -yq --no-install-recommends curl
+    apt-get install -yq --no-install-recommends ca-certificates
+    apt-get install -yq --no-install-recommends make
+    apt-get install -yq --no-install-recommends bzip2
+    apt-get install -yq --no-install-recommends gcc
+    apt-get install -yq --no-install-recommends locales
+    apt-get install -yq --no-install-recommends curl
+    apt-get install -yq --no-install-recommends wget
+    apt-get install -yq --no-install-recommends libtasn1-dev
+    apt-get install -yq --no-install-recommends nettle-dev
+    apt-get install -yq --no-install-recommends libgmp-dev
+    apt-get install -yq --no-install-recommends libp11-kit-dev
+    apt-get install -yq --no-install-recommends zlib1g-dev
+    apt-get install -yq --no-install-recommends libbz2-dev
+    apt-get install -yq --no-install-recommends liblzma-dev
+    apt-get install -yq --no-install-recommends libcurl4-gnutls-dev
+    apt-get install -yq --no-install-recommends libncurses5-dev
+    locale-gen en_US.UTF-8
+    update-locale LANG=en_US.UTF-8
+    OPT=/opt/wtsi-cgp
+    PATH=$OPT/bin:$OPT/biobambam2/bin:$PATH
+    PERL5LIB=$OPT/lib/perl5
+    LD_LIBRARY_PATH=$OPT/lib
+    LC_ALL=en_US.UTF-8
+    LANG=en_US.UTF-8
+    git clone https://github.com/cancerit/alleleCount
+    cd alleleCount
+    # build tools from other repos
+    ./build/opt-build.sh $OPT
+    # build the tools in this repo, separate to reduce build time on errors
+    ./build/opt-build-local.sh $OPT
+    ln -s $OPT/bin/alleleCounter /usr/local/bin

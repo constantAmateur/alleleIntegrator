@@ -1,5 +1,5 @@
 #Shut up about global variables.
-utils::globalVariables(c("ExAcSNPs",'biasedGenes','MAF','covBins','tumFrac','SNPs1k'))
+utils::globalVariables(c("ExAcSNPs",'biasedGenes','MAF','covBins','tumFrac','SNPs1k','.acBin','.parBin','.bcfBin'))
 
 #This is how to process the imprinted genes data.table to impGenes
 #x = read.table('~/trueHome/Projects/Common/Data/imprintedGenes.txt',sep='\t',header=TRUE)
