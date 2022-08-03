@@ -53,3 +53,5 @@ Also demonstrated in this example is how to aggregate cells into clusters and ap
 ## Citation
 
 If you use this package in your work, please cite: Trinh, M.K, et al., Precise identification of cancer cells from allelic imbalances in single cell transcriptomes, BiorXiv, 2021
+
+[![DOI](https://zenodo.org/badge/430666760.svg)](https://zenodo.org/badge/latestdoi/430666760)
